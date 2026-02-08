@@ -1,6 +1,70 @@
+import fs from "fs";
+import path from "path";
 import { pool } from "../db/pool.js";
 import { isBlockedHost } from "../domain/blocklists.js";
 import { registrableHost } from "../domain/normalize.js";
+
+const LIVE_CSV = path.join("data", "exports", "india_leads_latest.csv");
+
+const CSV_HEADERS = [
+  "Company Name","Category","City","Search Category","Address","Phone","Email",
+  "Website","Rating","Reviews","Contact Person","Contact Role","Contact Email",
+  "All Emails","All Phones","LinkedIn","Contact Forms","Lead Score"
+];
+
+function ensureCsvHeader() {
+  const dir = path.dirname(LIVE_CSV);
+  if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+  if (!fs.existsSync(LIVE_CSV)) {
+    fs.writeFileSync(LIVE_CSV, CSV_HEADERS.join(",") + "\n", "utf8");
+  }
+}
+
+function csvEscape(v: string): string {
+  return `"${String(v).replace(/"/g, '""')}"`;
+}
+
+async function appendLeadToCsv(companyId: string) {
+  const res = await pool.query(`
+    SELECT
+      c.legal_name, c.maps_category, c.search_city, c.search_category, c.address_raw,
+      c.maps_rating, c.maps_reviews_count,
+      cd.final_url AS website_url, cd.domain AS website_domain,
+      COALESCE(l.lead_score, 0) AS lead_score,
+      (SELECT string_agg(DISTINCT value, '; ') FROM company_contacts cc WHERE cc.company_id=c.company_id AND cc.type='email') AS emails,
+      (SELECT string_agg(DISTINCT value, '; ') FROM company_contacts cc WHERE cc.company_id=c.company_id AND cc.type='phone') AS phones,
+      (SELECT string_agg(DISTINCT value, '; ') FROM company_contacts cc WHERE cc.company_id=c.company_id AND cc.type='social') AS linkedin,
+      (SELECT string_agg(DISTINCT value, '; ') FROM company_contacts cc WHERE cc.company_id=c.company_id AND cc.type='contact_form') AS contact_forms,
+      (SELECT p.name FROM company_people p WHERE p.company_id=c.company_id ORDER BY p.confidence DESC, p.found_at DESC LIMIT 1) AS contact_person,
+      (SELECT p.role FROM company_people p WHERE p.company_id=c.company_id ORDER BY p.confidence DESC, p.found_at DESC LIMIT 1) AS contact_role,
+      (SELECT p.email FROM company_people p WHERE p.company_id=c.company_id AND p.email IS NOT NULL ORDER BY p.confidence DESC LIMIT 1) AS contact_email
+    FROM companies c
+    LEFT JOIN company_domains cd ON cd.company_id=c.company_id AND cd.status='verified'
+    LEFT JOIN leads l ON l.company_id=c.company_id
+    WHERE c.company_id=$1
+  `, [companyId]);
+
+  if (!res.rowCount) return;
+  const r = res.rows[0];
+
+  const primaryPhone = r.phones ? r.phones.split("; ")[0] : "";
+  const primaryEmail = r.contact_email || (r.emails ? r.emails.split("; ")[0] : "");
+
+  const row = [
+    r.legal_name || "", r.maps_category || "", r.search_city || "", r.search_category || "",
+    r.address_raw || "", primaryPhone, primaryEmail,
+    r.website_url || r.website_domain || "",
+    r.maps_rating != null ? String(r.maps_rating) : "",
+    r.maps_reviews_count != null ? String(r.maps_reviews_count) : "",
+    r.contact_person || "", r.contact_role || "", r.contact_email || "",
+    r.emails || "", r.phones || "", r.linkedin || "", r.contact_forms || "",
+    r.lead_score != null ? String(r.lead_score) : "0"
+  ];
+
+  ensureCsvHeader();
+  fs.appendFileSync(LIVE_CSV, row.map(csvEscape).join(",") + "\n", "utf8");
+  console.log(`[CSV] ✓ Appended: ${r.legal_name} (score: ${r.lead_score})`);
+}
 
 type JobData = { companyId: string; batchId?: string };
 
@@ -84,4 +148,7 @@ export async function seedLeadJob(job: { data: JobData }) {
         OR (leads.primary_contact_type <> 'email' AND EXCLUDED.primary_contact_type = 'email')`,
     [companyId, dom.rows[0].domain, primary.type, primary.value, score, batchId]
   );
+
+  // Real-time CSV: append this lead immediately so no data is ever lost
+  await appendLeadToCsv(companyId);
 }

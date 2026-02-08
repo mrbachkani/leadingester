@@ -320,8 +320,8 @@ async function exportMasterCsv(): Promise<string> {
   const exportDir = path.join("data", "exports");
   fs.mkdirSync(exportDir, { recursive: true });
 
-  // Always write to the "latest" file (overwritten after each city for zero data loss)
-  const outPath = CSV_PATH;
+  // Write to a snapshot file (NOT the live real-time CSV which is managed by seedLead worker)
+  const outPath = path.join(exportDir, "india_leads_snapshot.csv");
   // Also write a dated copy
   const dateStr = new Date().toISOString().split("T")[0];
   const datedPath = path.join(exportDir, `india_leads_${dateStr}.csv`);
