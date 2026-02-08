@@ -1,0 +1,43 @@
+services:
+  postgres:
+    image: postgres:15-alpine
+    container_name: lead-pipeline-db
+    environment:
+      - POSTGRES_USER=leaduser
+      - POSTGRES_PASSWORD=leadpass
+      - POSTGRES_DB=leaddb
+    ports:
+      - "5433:5432"
+    volumes:
+      - lead-pipeline-db-data:/var/lib/postgresql/data
+
+  redis:
+    image: redis:7-alpine
+    container_name: lead-pipeline-redis
+    ports:
+      - "6380:6379"
+
+  app:
+    build: .
+    container_name: lead-pipeline-app
+    depends_on:
+      - postgres
+      - redis
+    environment:
+      - DATABASE_URL=postgres://leaduser:leadpass@postgres:5432/leaddb
+      - REDIS_URL=redis://redis:6379
+      - SERPAPI_API_KEY=${SERPAPI_API_KEY:-}
+      - DOMAIN_ACCEPT_THRESHOLD=0.70
+      - MAX_SERP_QUERIES_PER_COMPANY=2
+      - CRAWL_MAX_PAGES=8
+      - CRAWL_TIMEOUT_MS=15000
+      # Use a real user agent or the one from env
+      - USER_AGENT=LeadPipelineBot/1.0 (+contact@example.com)
+    volumes:
+      - ./data:/app/data
+      # Mount source for dev if needed, but build step is in Dockerfile
+      # - ./src:/app/src
+    command: sh -c "node dist/db/migrate.js && node dist/run/startWorkers.js"
+
+volumes:
+  lead-pipeline-db-data:

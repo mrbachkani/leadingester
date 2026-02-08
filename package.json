@@ -1,0 +1,28 @@
+{
+  "name": "lead-pipeline",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "main": "dist/index.js",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "migrate": "node dist/db/migrate.js",
+    "workers": "node dist/run/startWorkers.js",
+    "kickoff": "node dist/run/kickoff.js",
+    "export": "node dist/run/export.js"
+  },
+  "dependencies": {
+    "bullmq": "^5.12.10",
+    "cheerio": "^1.0.0",
+    "csv-parser": "^3.0.0",
+    "dotenv": "^16.4.5",
+    "ioredis": "^5.4.1",
+    "playwright-core": "1.49.0",
+    "pg": "^8.12.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.11.30",
+    "@types/pg": "^8.11.10",
+    "typescript": "^5.6.3"
+  }
+}

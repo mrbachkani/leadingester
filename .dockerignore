@@ -1,0 +1,9 @@
+node_modules
+dist
+data
+.git
+.env
+.windsurf
+docker-compose.yml
+Dockerfile
+README.md
