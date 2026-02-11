@@ -112,12 +112,20 @@ export class CategorySearchScraper {
             continue;
           }
 
-          // Click on the card to load details
-          await card.click({ timeout: 10000 });
+          // Click on the card to load details (retry once with scroll if timeout)
+          try {
+            await card.scrollIntoViewIfNeeded({ timeout: 5000 });
+            await card.click({ timeout: 15000 });
+          } catch {
+            // Retry: scroll into view and try again
+            await page.waitForTimeout(1000);
+            await card.scrollIntoViewIfNeeded({ timeout: 5000 }).catch(() => {});
+            await card.click({ timeout: 20000 });
+          }
           await page.waitForTimeout(2500);
           
           // Wait for details panel to load
-          await page.waitForSelector("h1", { timeout: 10000 });
+          await page.waitForSelector("h1", { timeout: 15000 });
           
           const result: CategorySearchResult = {
             name: businessName
@@ -186,8 +194,8 @@ export class CategorySearchScraper {
             console.log(`[CategorySearch] Progress: ${processedCount}/${limit} extracted`);
           }
           
-        } catch (error) {
-          console.error(`[CategorySearch] Error extracting result at index ${cardIndex - 1}:`, error);
+        } catch (error: any) {
+          console.warn(`[CategorySearch] Skipped card ${cardIndex - 1} (${error?.name || 'error'} - will retry others)`);
         }
       }
 
